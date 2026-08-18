@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laporan Keuangan Harian</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        *{box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;margin:0;padding:0}
+        body{background:#f4f6f9;color:#333;padding:15px}
+        .container{max-width:980px;margin:0 auto;background:#fff;padding:20px;border-radius:12px;box-shadow:0 4px 15px #0001}
+        h2{text-align:center;margin-bottom:15px;color:#2c3e50}
+        .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+        .col{flex:1;min-width:140px}.col-sm{flex:0.4;min-width:120px}
+        label{display:block;font-size:12px;font-weight:600;margin-bottom:4px}
+        input,select,button{width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px}
+        button{font-weight:bold;cursor:pointer;border:none;transition:.2s}
+        .btn-green{background:#27ae60;color:#fff}.btn-green:hover{background:#219150}
+        .btn-gray{background:#7f8c8d;color:#fff}.btn-gray:hover{background:#636e72}
+        .btn-excel{background:#1d6f42;color:#fff}.btn-pdf{background:#c0392b;color:#fff}
+        .btn-purple{background:#8e44ad;color:#fff;margin-top:20px}
+        .btn-orange{background:#f39c12;color:#fff}.btn-red{background:#e74c3c;color:#fff}
+        .btn-blue{background:#2980b9;color:#fff}
+        .rupiah-preview{font-size:11px;color:#27ae60;font-weight:bold;margin-top:2px;display:block;min-height:15px}
+        .box{background:#eef2f5;padding:12px;border-radius:8px;margin:15px 0}
+        .tab-btn{display:flex;gap:8px;margin-bottom:10px}
+        .tab-btn button{background:#bdc3c7;color:#333;padding:6px;font-size:12px}
+        .tab-btn button.active{background:#2980b9;color:#fff}
+        .cards{display:flex;gap:10px;margin:15px 0;flex-wrap:wrap}
+        .card{flex:1;min-width:160px;padding:12px;border-radius:8px;text-align:center;color:#fff;font-weight:bold;font-size:12px}
+        .card span{display:block}.c-main{font-size:15px;margin-top:4px}.c-sub{font-size:10px;opacity:.9;font-weight:normal}
+        .bg-cap{background:#8e44ad}.bg-inc{background:#27ae60}.bg-exp{background:#e74c3c}.bg-pro{background:#2980b9}
+        .filter-table-box{background:#fff;border:1px solid #e0e0e0;padding:10px;border-radius:8px;margin-top:15px}
+        .bulk-actions{display:flex;gap:10px;align-items:center;margin-top:10px;background:#fff3cd;padding:8px 12px;border-radius:6px;border:1px solid #ffeeba}
+        table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+        th,td{border:1px solid #ddd;padding:8px;text-align:left}
+        th{background:#f8f9fa}
+        .txt-inc{color:#27ae60;font-weight:bold}.txt-exp{color:#e74c3c;font-weight:bold}
+        .actions{display:flex;gap:4px}.actions button{padding:3px 8px;font-size:11px}
+        .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:#0008;z-index:99}
+        .modal-body{background:#fff;margin:8% auto;padding:15px;border-radius:8px;max-width:400px}
+        .cat-list{list-style:none;max-height:150px;overflow-y:auto;margin-top:10px}
+        .cat-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee}
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Catatan Keuangan Harian & Modal</h2>
+
+    <!-- Box Import Excel -->
+    <div class="box" style="background:#e8f4f8; border:1px solid #3498db">
+        <h3>Import Data dari File Excel (.xlsx / .xls)</h3>
+        <div class="row" style="margin-top:8px">
+            <div class="col" style="flex:2"><input type="file" id="excel-file" accept=".xlsx, .xls"></div>
+            <div class="col"><button type="button" class="btn-blue" onclick="importExcel()">Upload & Baca Data</button></div>
+        </div>
+    </div>
+
+    <!-- Form Input / Edit -->
+    <form id="f-form">
+        <input type="hidden" id="edit-id">
+        <div class="row">
+            <div class="col"><label>Tanggal</label><input type="date" id="date" required></div>
+            <div class="col"><label>Jenis</label><select id="type" onchange="typeChange()"><option value="income">Pendapatan (+)</option><option value="expense">Pengeluaran (-)</option></select></div>
+            <div class="col"><label>Kategori</label><select id="category" required></select></div>
+            <div class="col-sm"><button type="button" class="btn-purple" onclick="openCatModal()">Kelola Kategori</button></div>
+        </div>
+        <div class="row">
+            <div class="col"><label>Nama Pembeli/Penerima</label><input type="text" id="person-name" placeholder="Budi / PLN" required></div>
+            <div class="col" id="cap-group"><label>Modal HPP (Rp)</label><input type="number" id="capital" value="0" min="0" oninput="pvw('capital','c-pvw')"><span class="rupiah-preview" id="c-pvw"></span></div>
+            <div class="col"><label>Total Transaksi (Rp)</label><input type="number" id="amount" placeholder="0" min="1" required oninput="pvw('amount','a-pvw')"><span class="rupiah-preview" id="a-pvw"></span></div>
+        </div>
+        <div class="row"><div class="col"><label>Keterangan</label><input type="text" id="description" placeholder="Penjualan Kopi / Pembelian Bahan" required></div></div>
+        <div class="row">
+            <button type="submit" id="sub-btn" class="btn-green">Tambah Transaksi</button>
+            <button type="button" id="cnc-btn" class="btn-gray" style="display:none" onclick="resetF()">Batal Edit</button>
+        </div>
+    </form>
+
+    <div class="box">
+        <h3>Tracking Periode Laporan</h3>
+        <div class="tab-btn">
+            <button type="button" id="m-rng" class="active" onclick="switchFilter('range')">Rentang Tanggal</button>
+            <button type="button" id="m-mth" onclick="switchFilter('month')">Bulan & Tahun</button>
+        </div>
+        <div class="row" id="f-rng-box">
+            <div class="col"><label>Dari Tanggal</label><input type="date" id="s-date"></div>
+            <div class="col"><label>Sampai Tanggal</label><input type="date" id="e-date"></div>
+        </div>
+        <div class="row" id="f-mth-box" style="display:none">
+            <div class="col"><label>Bulan</label><select id="f-mth"><option value="01">Januari</option><option value="02">Februari</option><option value="03">Maret</option><option value="04">April</option><option value="05">Mei</option><option value="06">Juni</option><option value="07">Juli</option><option value="08">Agustus</option><option value="09">September</option><option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option></select></div>
+            <div class="col"><label>Tahun</label><select id="f-yr"></select></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+            <div class="col"><button type="button" class="btn-excel" onclick="expXls()">Download Excel (.xlsx)</button></div>
+            <div class="col"><button type="button" class="btn-pdf" onclick="expPdf()">Download PDF (.pdf)</button></div>
+        </div>
+    </div>
+
+    <div class="cards">
+        <div class="card bg-cap">Total Modal<span class="c-main" id="t-cap">Rp 0</span><span class="c-sub" id="t-cap-sub"></span></div>
+        <div class="card bg-inc">Total Pendapatan<span class="c-main" id="t-inc">Rp 0</span><span class="c-sub" id="t-inc-sub"></span></div>
+        <div class="card bg-exp">Total Pengeluaran<span class="c-main" id="t-exp">Rp 0</span><span class="c-sub" id="t-exp-sub"></span></div>
+        <div class="card bg-pro">Laba Bersih<span class="c-main" id="t-pro">Rp 0</span><span class="c-sub" id="t-pro-sub"></span></div>
+    </div>
+
+    <!-- Filter Kolom & Akses Massal -->
+    <div class="filter-table-box">
+        <label style="font-weight:bold;margin-bottom:6px">Filter & Cari di Hasil Transaksi:</label>
+        <div class="row">
+            <div class="col"><input type="text" id="tbl-search" placeholder="Cari Nama / Keterangan..." oninput="render()"></div>
+            <div class="col">
+                <select id="tbl-type" onchange="render()">
+                    <option value="all">Semua Jenis Transaksi</option>
+                    <option value="income">Khusus Pendapatan</option>
+                    <option value="expense">Khusus Pengeluaran</option>
+                </select>
+            </div>
+            <div class="col">
+                <select id="tbl-cat" onchange="render()">
+                    <option value="all">Semua Kategori</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="bulk-actions" id="bulk-box" style="display:none">
+            <span id="selected-count" style="font-size:12px;font-weight:bold">0 Transaksi Terpilih</span>
+            <button type="button" class="btn-orange" style="width:auto;padding:4px 10px;font-size:12px" onclick="editSelected()">Edit Terpilih</button>
+            <button type="button" class="btn-red" style="width:auto;padding:4px 10px;font-size:12px" onclick="deleteSelected()">Hapus Terpilih</button>
+        </div>
+    </div>
+
+    <div style="overflow-x:auto">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:30px;text-align:center"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"></th>
+                    <th>Tanggal</th><th>Nama</th><th>Kategori</th><th>Keterangan</th><th>Modal</th><th>Jenis</th><th>Jumlah</th><th>Aksi</th>
+                </tr>
+            </thead>
+            <tbody id="t-list"></tbody>
+        </table>
+    </div>
+</div>
+
+<div id="c-modal" class="modal">
+    <div class="modal-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <h3>Kelola Kategori</h3><button type="button" style="width:auto;background:none;font-size:18px" onclick="closeCatModal()">&times;</button>
+        </div>
+        <select id="m-cat-type" onchange="renderCatList()"><option value="income">Pendapatan</option><option value="expense">Pengeluaran</option></select>
+        <div class="row" style="margin-top:10px"><div class="col"><input type="text" id="n-cat-name" placeholder="Kategori Baru"></div><div class="col-sm"><button type="button" class="btn-green" onclick="addCat()">+ Tambah</button></div></div>
+        <ul id="cat-container" class="cat-list"></ul>
+    </div>
+</div>
+
+<script>
+    let cats=JSON.parse(localStorage.getItem('cats'))||{income:["Penjualan Produk","Jasa/Layanan","Investasi","Lain-lain"],expense:["Bahan Baku","Operasional","Gaji Pegawai","Sewa Tempat","Lain-lain"]};
+    let txs=JSON.parse(localStorage.getItem('txs'))||[];
+    let filterMode='range';
+    const cYr=new Date().getFullYear(), cMth=String(new Date().getMonth()+1).padStart(2,'0');
+    
+    for(let y=cYr-5;y<=cYr+5;y++){let o=document.createElement('option');o.value=y;o.text=y;if(y===cYr)o.selected=true;document.getElementById('f-yr').appendChild(o);}
+    
+    document.getElementById('s-date').value=new Date(cYr,new Date().getMonth(),1).toISOString().split('T')[0];
+    document.getElementById('e-date').value=new Date().toISOString().split('T')[0];
+    document.getElementById('f-mth').value=cMth;
+    document.getElementById('date').valueAsDate=new Date();
+
+    document.getElementById('f-form').addEventListener('submit',saveTx);
+    ['s-date','e-date','f-mth','f-yr'].forEach(id=>document.getElementById(id).addEventListener('change',render));
+
+    function importExcel(){
+        const fileInput = document.getElementById('excel-file');
+        const file = fileInput.files[0];
+        if(!file) return alert("Pilih file Excel terlebih dahulu!");
+
+        const reader = new FileReader();
+        reader.onload = function(e){
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, {type: 'array'});
+            const firstSheet = workbook.SheetNames[0];
+            const rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet]);
+
+            let count = 0;
+            rows.forEach(r => {
+                const date = r['Tanggal'] || r['tanggal'] || new Date().toISOString().split('T')[0];
+                const personName = r['Nama Pembeli / Penerima'] || r['Nama Pembeli/Penerima'] || r['Nama'] || '-';
+                const category = r['Kategori'] || 'Lain-lain';
+                const description = r['Keterangan'] || '-';
+                const capital = parseFloat(r['Modal HPP (Rp)'] || r['Modal'] || 0);
+                const rawType = (r['Jenis Transaksi'] || r['Jenis'] || 'Pendapatan').toString().toLowerCase();
+                const type = rawType.includes('keluar') || rawType.includes('expense') ? 'expense' : 'income';
+                const amount = parseFloat(r['Jumlah Transaksi (Rp)'] || r['Jumlah'] || 0);
+
+                if(amount > 0){
+                    txs.push({id: Date.now() + Math.random(), date: String(date), type, category, personName, capital, description, amount});
+                    count++;
+                }
+            });
+
+            localStorage.setItem('txs', JSON.stringify(txs));
+            alert(`Berhasil mengimpor ${count} data transaksi dari Excel!`);
+            fileInput.value = '';
+            render();
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function switchFilter(m){
+        filterMode=m;
+        document.getElementById('f-rng-box').style.display=m==='range'?'flex':'none';
+        document.getElementById('f-mth-box').style.display=m==='month'?'flex':'none';
+        document.getElementById('m-rng').className=m==='range'?'active':'';
+        document.getElementById('m-mth').className=m==='month'?'active':'';
+        render();
+    }
+
+    function updateTblCatDropdown(){
+        const sel=document.getElementById('tbl-cat'); sel.innerHTML='<option value="all">Semua Kategori</option>';
+        const allCats=[...new Set([...cats.income, ...cats.expense])];
+        allCats.forEach(c=>{let o=document.createElement('option');o.value=c;o.text=c;sel.appendChild(o);});
+    }
+
+    function typeChange(){
+        const t=document.getElementById('type').value;
+        document.getElementById('cap-group').style.display=t==='expense'?'none':'block';
+        if(t==='expense') document.getElementById('capital').value=0;
+        const sel=document.getElementById('category'); sel.innerHTML='';
+        (cats[t]||[]).forEach(c=>{let o=document.createElement('option');o.value=c;o.text=c;sel.appendChild(o);});
+    }
+
+    function fmtRupiah(n){
+        if(!n||isNaN(n)||n===0)return"";
+        const a=Math.abs(n); let f="";
+        if(a>=1e9) f=(n/1e9).toFixed(2).replace(/\.00$/,'')+" Milyar";
+        else if(a>=1e6) f=(n/1e6).toFixed(2).replace(/\.00$/,'')+" Juta";
+        else if(a>=1e3) f=(n/1e3).toFixed(0)+" Ribu";
+        else f=n.toString();
+        return `(Rp ${n.toLocaleString('id-ID')} / ${f})`;
+    }
+
+    function pvw(i,p){document.getElementById(p).innerText=fmtRupiah(parseFloat(document.getElementById(i).value));}
+
+    function saveTx(e){
+        e.preventDefault();
+        const id=document.getElementById('edit-id').value;
+        const item={id:id?Number(id):Date.now(),date:document.getElementById('date').value,type:document.getElementById('type').value,category:document.getElementById('category').value,personName:document.getElementById('person-name').value,capital:parseFloat(document.getElementById('capital').value)||0,description:document.getElementById('description').value,amount:parseFloat(document.getElementById('amount').value)};
+        if(id){let idx=txs.findIndex(t=>t.id==id);if(idx!==-1)txs[idx]=item;}else txs.push(item);
+        localStorage.setItem('txs',JSON.stringify(txs));
+        resetF(); render();
+    }
+
+    function editTx(id){
+        const t=txs.find(x=>x.id===id); if(!t)return;
+        document.getElementById('edit-id').value=t.id;
+        document.getElementById('date').value=t.date;
+        document.getElementById('type').value=t.type; typeChange();
+        document.getElementById('category').value=t.category||cats[t.type][0];
+        document.getElementById('person-name').value=t.personName||'';
+        document.getElementById('capital').value=t.capital||0;
+        document.getElementById('description').value=t.description;
+        document.getElementById('amount').value=t.amount;
+        pvw('capital','c-pvw'); pvw('amount','a-pvw');
+        document.getElementById('sub-btn').innerText='Update Transaksi';
+        document.getElementById('sub-btn').className='btn-orange';
+        document.getElementById('cnc-btn').style.display='block';
+        window.scrollTo({top:0,behavior:'smooth'});
+    }
+
+    function resetF(){
+        document.getElementById('edit-id').value=''; document.getElementById('f-form').reset();
+        document.getElementById('date').valueAsDate=new Date();
+        document.getElementById('c-pvw').innerText=''; document.getElementById('a-pvw').innerText='';
+        document.getElementById('sub-btn').innerText='Tambah Transaksi'; document.getElementById('sub-btn').className='btn-green';
+        document.getElementById('cnc-btn').style.display='none'; typeChange();
+    }
+
+    function delTx(id){if(confirm("Hapus transaksi ini?")){txs=txs.filter(t=>t.id!==id);localStorage.setItem('txs',JSON.stringify(txs));render();}}
+
+    function openCatModal(){document.getElementById('c-modal').style.display='block';renderCatList();}
+    function closeCatModal(){document.getElementById('c-modal').style.display='none';typeChange();updateTblCatDropdown();}
+    function renderCatList(){
+        const t=document.getElementById('m-cat-type').value, box=document.getElementById('cat-container'); box.innerHTML='';
+        (cats[t]||[]).forEach((c,i)=>{box.innerHTML+=`<li class="cat-item"><span>${c}</span><button type="button" class="btn-red" style="padding:2px 6px;font-size:10px" onclick="delCat('${t}',${i})">Hapus</button></li>`;});
+    }
+    function addCat(){
+        const t=document.getElementById('m-cat-type').value, inp=document.getElementById('n-cat-name'), val=inp.value.trim();
+        if(!val)return alert("Isi nama kategori!"); if(cats[t].includes(val))return alert("Kategori sudah ada!");
+        cats[t].push(val); localStorage.setItem('cats',JSON.stringify(cats)); inp.value=''; renderCatList();
+    }
+    function delCat(t,i){if(cats[t].length<=1)return alert("Minimal 1 kategori!");cats[t].splice(i,1);localStorage.setItem('cats',JSON.stringify(cats));renderCatList();}
+
+    /* Logika Seleksi Ceklis (Multi-Select) */
+    function toggleSelectAll(master){
+        const cbs = document.querySelectorAll('.row-cb');
+        cbs.forEach(cb => cb.checked = master.checked);
+        updateBulkBox();
+    }
+
+    function updateBulkBox(){
+        const checked = document.querySelectorAll('.row-cb:checked');
+        const count = checked.length;
+        const box = document.getElementById('bulk-box');
+        if(count > 0){
+            box.style.display = 'flex';
+            document.getElementById('selected-count').innerText = `${count} Transaksi Terpilih`;
+        } else {
+            box.style.display = 'none';
+        }
+    }
+
+    function deleteSelected(){
+        const checked = document.querySelectorAll('.row-cb:checked');
+        if(checked.length === 0) return;
+        if(confirm(`Yakin ingin menghapus ${checked.length} transaksi terpilih?`)){
+            const idsToDelete = Array.from(checked).map(cb => Number(cb.value));
+            txs = txs.filter(t => !idsToDelete.includes(t.id));
+            localStorage.setItem('txs', JSON.stringify(txs));
+            render();
+        }
+    }
+
+    function editSelected(){
+        const checked = document.querySelectorAll('.row-cb:checked');
+        if(checked.length === 0) return;
+        const firstId = Number(checked[0].value);
+        editTx(firstId);
+    }
+
+    function getFiltered(){
+        let result = [];
+        if(filterMode==='range'){
+            const s=document.getElementById('s-date').value, e=document.getElementById('e-date').value;
+            result = txs.filter(t=>(!s||t.date>=s)&&(!e||t.date<=e));
+        }else{
+            const m=document.getElementById('f-mth').value, y=document.getElementById('f-yr').value;
+            result = txs.filter(t=>{const[ty,tm]=t.date.split('-');return ty===y&&tm===m;});
+        }
+
+        const searchKw = document.getElementById('tbl-search').value.toLowerCase().trim();
+        const typeFilter = document.getElementById('tbl-type').value;
+        const catFilter = document.getElementById('tbl-cat').value;
+
+        return result.filter(t => {
+            const matchKw = !searchKw || (t.personName||'').toLowerCase().includes(searchKw) || (t.description||'').toLowerCase().includes(searchKw);
+            const matchType = typeFilter === 'all' || t.type === typeFilter;
+            const matchCat = catFilter === 'all' || t.category === catFilter;
+            return matchKw && matchType && matchCat;
+        }).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    }
+
+    function render(){
+        const data=getFiltered(), list=document.getElementById('t-list'); list.innerHTML='';
+        let tCap=0, tInc=0, tExp=0;
+        data.forEach(t=>{
+            if(t.type==='income'){tInc+=t.amount;tCap+=(t.capital||0);}else tExp+=t.amount;
+            list.innerHTML+=`
+                <tr>
+                    <td style="text-align:center"><input type="checkbox" class="row-cb" value="${t.id}" onchange="updateBulkBox()"></td>
+                    <td>${t.date}</td><td>${t.personName||'-'}</td><td><b>${t.category||'-'}</b></td><td>${t.description}</td><td>Rp ${(t.capital||0).toLocaleString('id-ID')}</td><td class="${t.type==='income'?'txt-inc':'txt-exp'}">${t.type==='income'?'Pendapatan':'Pengeluaran'}</td><td>Rp ${t.amount.toLocaleString('id-ID')}</td><td><div class="actions"><button type="button" class="btn-orange" onclick="editTx(${t.id})">Edit</button><button type="button" class="btn-red" onclick="delTx(${t.id})">Hapus</button></div></td>
+                </tr>`;
+        });
+        const nPro=tInc-tCap-tExp;
+        document.getElementById('t-cap').innerText=`Rp ${tCap.toLocaleString('id-ID')}`; document.getElementById('t-cap-sub').innerText=fmtRupiah(tCap).replace('(Rp ','').replace(')','');
+        document.getElementById('t-inc').innerText=`Rp ${tInc.toLocaleString('id-ID')}`; document.getElementById('t-inc-sub').innerText=fmtRupiah(tInc).replace('(Rp ','').replace(')','');
+        document.getElementById('t-exp').innerText=`Rp ${tExp.toLocaleString('id-ID')}`; document.getElementById('t-exp-sub').innerText=fmtRupiah(tExp).replace('(Rp ','').replace(')','');
+        document.getElementById('t-pro').innerText=`Rp ${nPro.toLocaleString('id-ID')}`; document.getElementById('t-pro-sub').innerText=fmtRupiah(nPro).replace('(Rp ','').replace(')','');
+        
+        document.getElementById('select-all').checked = false;
+        updateBulkBox();
+    }
+
+    function expXls(){
+        const d=getFiltered(); if(!d.length)return alert("Tidak ada data!");
+        const rows=d.map(t=>({Tanggal:t.date,"Nama Pembeli/Penerima":t.personName||'-',Kategori:t.category||'-',Keterangan:t.description,"Modal HPP (Rp)":t.capital||0,Jenis:t.type==='income'?'Pendapatan':'Pengeluaran',"Jumlah (Rp)":t.amount,"Laba Clean (Rp)":t.type==='income'?(t.amount-(t.capital||0)):-t.amount}));
+        const ws=XLSX.utils.json_to_sheet(rows), wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Laporan");
+        XLSX.writeFile(wb,`Laporan_Keuangan_Filtered.xlsx`);
+    }
+
+    function expPdf(){
+        const d=getFiltered(); if(!d.length)return alert("Tidak ada data!");
+        const {jsPDF}=window.jspdf, doc=new jsPDF(); doc.setFontSize(14); doc.text("Laporan Keuangan Harian",14,15);
+        doc.autoTable({head:[['Tanggal','Nama','Kategori','Keterangan','Modal','Jenis','Jumlah']],body:d.map(t=>[t.date,t.personName||'-',t.category||'-',t.description,`Rp ${(t.capital||0).toLocaleString('id-ID')}`,t.type==='income'?'Pendapatan':'Pengeluaran',`Rp ${t.amount.toLocaleString('id-ID')}`]),startY:22,theme:'striped'});
+        doc.save(`Laporan_Keuangan_Filtered.pdf`);
+    }
+
+    typeChange(); updateTblCatDropdown(); render();
+</script>
+</body>
+</html>
